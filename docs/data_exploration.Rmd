@@ -1,0 +1,169 @@
+---
+title: "exploration"
+author: "Alex Reed"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#load packages 
+library(tidyverse)
+library(readr)
+library(here)
+library(janitor)
+library(gt)
+library(openintro)
+library(ggplot2)
+library(modelr)
+library(sf)
+library(tmap)
+library(sf)
+library(leaflet)
+```
+
+
+```{r}
+#read in the data and clean
+ag_data <- read_csv(here("data/Table2_4_1.csv"), skip = 2) 
+ag_data <- ag_data[-1,]
+colnames(ag_data)[1] <- "Animals"
+
+ag_data <- ag_data |>
+  filter(Animals == "Total") |>
+  clean_names() |>
+  mutate_at(vars(2:30), as.factor) |> 
+  pivot_longer(cols = 2:30, 
+               names_to = 'year',
+               values_to = 'emissions')
+```
+
+```{r}
+ggplot(data = ag_data, aes(reorder(year, -emissions), y = emissions, group = 1)) + 
+  geom_point() +
+  labs(x = "Year",
+       y = "Emissions (MMT CO2 eq.)")
+```
+
+```{r}
+#read in and clean CAFOs data 
+CAFO_df <- st_read("data/CAFO_Density/CAFOs_per_County.shp") |>
+  clean_names() 
+colnames(CAFO_df)[colnames(CAFO_df) == 'name'] <- 'county' 
+
+CAFO_df_no_geom <- CAFO_df |>
+  select("state_name", "caf_os") 
+CAFO_df_no_geom <- st_drop_geometry(CAFO_df) |> #dropping geom so that I can sum values in caf_os col
+  group_by(state_name) |>
+  summarise(sum_caf_os = sum(caf_os))
+
+CAFO_CA <- CAFO_df |>
+  select("county", "state_name", "caf_os") |>
+  filter(state_name == "California")
+
+CAFO_IOWA <- CAFO_df |>
+  select("county", "state_name", "caf_os") |>
+  filter(state_name == "Iowa")
+```
+
+```{r}
+#read in and clean asthma data 
+asthma_deaths <- read_csv(here("data/asthma-deaths-by-county-2014_2019.csv")) |>
+  clean_names() 
+
+
+colnames(asthma_deaths)[colnames(asthma_deaths) == 'number_of_deaths'] <- 'deaths' 
+
+asthma_deaths_tot <- asthma_deaths[asthma_deaths$strata == 'Total population',] 
+asthma_deaths_tot <- asthma_deaths_tot |>
+  select("county", "deaths") |>
+  group_by(county) |>
+  summarise(deaths = sum(deaths)) |>
+  drop_na()
+
+
+# asthma_er <- read_csv(here("data/AsthmaEDByZip.csv")) |>
+#   clean_names()
+
+#join the datasets
+joined_df <- left_join(asthma_deaths_tot, CAFO_CA, by = "county")
+joined_df <- joined_df[-3,]
+plot(joined_df)
+```
+
+
+```{r}
+library(readxl)
+iowa_asthma <- read_xlsx(here("data/Map_Data.xlsx")) |>
+  clean_names() |>
+  select("county", "ed_visit_count") 
+
+joined_df_IOWA <- left_join(iowa_asthma, CAFO_IOWA, by = "county")
+
+mod = lm(ed_visit_count ~ caf_os, data = joined_df_IOWA)
+summary(mod)
+
+ggplot(joined_df_IOWA, aes(y = ed_visit_count, x = caf_os)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+```{r}
+mod = lm(deaths ~ caf_os, data = joined_df)
+summary(mod)
+
+ggplot(joined_df, aes(y = deaths, x = caf_os)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE)
+
+
+
+
+```
+
+```{r}
+#read cal_enviro data
+Cal_Enviro_all <- st_read("data/calenviroscreen40shpf2021shp/CES4 Final Shapefile.shp") |>
+   clean_names() 
+
+Cal_enviro_DACS <- read_xlsx(here("data/SB535DACresultsdatadictionary_F_2022.xlsx"), sheet = 4) |>
+  clean_names() 
+# 
+DACs_plot <- Cal_enviro_DACS |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
+DACs_plot |>
+leaflet() |>
+addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") |>
+addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") |>
+addLayersControl(baseGroups = c("World Imagery", "Toner Lite")) |>
+addMarkers(label = Cal_enviro_DACS$census_tract)
+
+
+
+#read NPDES Animal Feeding lot data
+library(readxl)
+cafo_df <- read_csv(here("data/Regulated_Facility_Report_Detail.csv")) 
+
+cafo_df <- read_xlsx(here("data/Regulated_Facility_Report_Detail.xlsx")) |>
+  clean_names()
+
+# cafo_df_plot <- cafo_df |>
+#   st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+# 
+# cafo_df_plot |>
+# leaflet() |>
+# addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") |>
+# addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") |>
+# addLayersControl(baseGroups = c("World Imagery", "Toner Lite")) |>
+# addMarkers(label = cafo_df$facility_name)
+
+
+  
+```
+
+
+```{r}
+DACS_cafo <- inner_join(cafo_df, Cal_enviro_DACS
+```
