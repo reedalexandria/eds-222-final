@@ -10,7 +10,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 #load packages 
-#library(ggiraph)
+#library(ggiraph)git 
 #library(ggiraphExtra)
 library(tidyverse)
 library(readr)
